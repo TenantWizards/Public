@@ -14,18 +14,23 @@
     (license details) instead.
 
     This script does NOT tell you whether an app's code actually calls the
-    affected endpoints — Microsoft Graph does not log that level of detail
+    affected endpoints. Microsoft Graph does not log that level of detail
     by default. It tells you which apps hold User.ReadBasic.All, and
     whether they already also hold a permission that would keep the
     equivalent calls working. Apps flagged "Needs review" are not
     guaranteed to break; they're the ones worth checking by hand before the
     rollout reaches your tenant.
 
+    User.Read.All and LicenseAssignment.Read.All cover different calls
+    (app role assignments vs. license details, respectively), so holding
+    only one of the two is tracked separately from holding both.
+
     Produces an HTML report with:
       - Every app (delegated or application grant) holding User.ReadBasic.All
-      - Whether that same grant also already includes User.Read.All or
+      - Whether that same grant also already includes User.Read.All and/or
         LicenseAssignment.Read.All
-      - A risk flag: Needs review vs. Likely covered
+      - A risk flag: Needs review (neither) / Partially covered (one) /
+        Likely covered (both)
 
 .PARAMETER TenantId
     Optional. Specify the tenant ID to connect to a specific tenant.
@@ -36,11 +41,20 @@
 .PARAMETER NoOpen
     Switch. Do not automatically open the report in the browser.
 
+.PARAMETER DeviceCode
+    Switch. Use device code sign-in instead of the default interactive
+    browser (WAM) flow. Use this when running from a remote session, a
+    headless/background process, or anywhere without a window handle for
+    WAM to anchor to ("A window handle must be configured" error).
+
 .EXAMPLE
     .\Get-ReadBasicAllExposureReport.ps1
 
 .EXAMPLE
     .\Get-ReadBasicAllExposureReport.ps1 -TenantId "contoso.onmicrosoft.com"
+
+.EXAMPLE
+    .\Get-ReadBasicAllExposureReport.ps1 -DeviceCode
 
 .NOTES
     Required Graph permissions (delegated):
@@ -61,7 +75,8 @@
 param (
     [Parameter()] [string]$TenantId,
     [Parameter()] [string]$OutputPath = $env:TEMP,
-    [Parameter()] [switch]$NoOpen
+    [Parameter()] [switch]$NoOpen,
+    [Parameter()] [switch]$DeviceCode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -93,7 +108,7 @@ $requiredModules = @(
 )
 
 foreach ($module in $requiredModules) {
-    if (-not (Get-InstalledModule -Name $module -ErrorAction SilentlyContinue)) {
+    if (-not (Get-Module -ListAvailable -Name $module)) {
         Write-Warning "Module '$module' not installed. Run: Install-Module $module -Scope CurrentUser"
         exit 1
     }
@@ -107,8 +122,10 @@ foreach ($module in $requiredModules) {
 $scopes = @('Application.Read.All', 'Directory.Read.All')
 $connectParams = @{ Scopes = $scopes; NoWelcome = $true }
 if ($TenantId) { $connectParams['TenantId'] = $TenantId }
+if ($DeviceCode) { $connectParams['UseDeviceCode'] = $true }
 
 Write-Host 'Connecting to Microsoft Graph...' -ForegroundColor Gray
+if ($DeviceCode) { Write-Host '(Device code sign-in: a code and URL will appear below. Open the URL on any device and enter the code.)' -ForegroundColor Gray }
 Connect-MgGraph @connectParams | Out-Null
 
 $ctx = Get-MgContext
@@ -258,12 +275,28 @@ foreach ($clientId in $delegatedGrantsByClient.Keys) {
     }
 }
 
-$rows = $rows | Sort-Object @{Expression = { $_.HasUserReadAll -or $_.HasLicenseReadAll } }, AppName
+function Get-RiskLevel {
+    param([bool]$HasUserReadAll, [bool]$HasLicenseReadAll)
+    if ($HasUserReadAll -and $HasLicenseReadAll) { 'Likely covered' }
+    elseif ($HasUserReadAll -or $HasLicenseReadAll) { 'Partially covered' }
+    else { 'Needs review' }
+}
 
-$needsReviewCount = @($rows | Where-Object { -not ($_.HasUserReadAll -or $_.HasLicenseReadAll) }).Count
-$coveredCount     = @($rows | Where-Object { $_.HasUserReadAll -or $_.HasLicenseReadAll }).Count
+# User.Read.All covers app role assignments specifically; LicenseAssignment.Read.All
+# covers license details specifically (see the blog post). Holding only one of the
+# two means the app is covered for ONE of those calls, not both, so that's tracked
+# as its own state rather than lumped in with "Likely covered".
+foreach ($row in $rows) {
+    $row | Add-Member -NotePropertyName Risk -NotePropertyValue (Get-RiskLevel $row.HasUserReadAll $row.HasLicenseReadAll)
+}
 
-Write-Host "  Total grants of User.ReadBasic.All found: $($rows.Count) | Needs review: $needsReviewCount | Likely covered: $coveredCount" -ForegroundColor Gray
+$rows = $rows | Sort-Object @{Expression = { switch ($_.Risk) { 'Needs review' {0} 'Partially covered' {1} default {2} } } }, AppName
+
+$needsReviewCount = @($rows | Where-Object { $_.Risk -eq 'Needs review' }).Count
+$partialCount     = @($rows | Where-Object { $_.Risk -eq 'Partially covered' }).Count
+$coveredCount     = @($rows | Where-Object { $_.Risk -eq 'Likely covered' }).Count
+
+Write-Host "  Total grants of User.ReadBasic.All found: $($rows.Count) | Needs review: $needsReviewCount | Partially covered: $partialCount | Likely covered: $coveredCount" -ForegroundColor Gray
 
 #endregion
 
@@ -276,8 +309,11 @@ if ($rows.Count -eq 0) {
     $rowsHtml = '<tr><td colspan="5" class="empty">No apps found with User.ReadBasic.All granted.</td></tr>'
 } else {
     foreach ($row in $rows) {
-        $covered = $row.HasUserReadAll -or $row.HasLicenseReadAll
-        $riskBadge = if ($covered) { '<span class="badge badge-green">Likely covered</span>' } else { '<span class="badge badge-red">Needs review</span>' }
+        $riskBadge = switch ($row.Risk) {
+            'Likely covered'    { '<span class="badge badge-green">Likely covered</span>' }
+            'Partially covered' { '<span class="badge badge-yellow">Partially covered</span>' }
+            default              { '<span class="badge badge-red">Needs review</span>' }
+        }
         $rowsHtml += "
         <tr>
           <td>
@@ -292,8 +328,9 @@ if ($rows.Count -eq 0) {
     }
 }
 
-$totalColor  = if ($rows.Count -gt 0) { 'red' } else { 'green' }
-$reviewColor = if ($needsReviewCount -gt 0) { 'red' } else { 'green' }
+$totalColor   = if ($rows.Count -gt 0) { 'red' } else { 'green' }
+$reviewColor  = if ($needsReviewCount -gt 0) { 'red' } else { 'green' }
+$partialColor = if ($partialCount -gt 0) { 'yellow' } else { 'green' }
 
 $html = @"
 <!DOCTYPE html>
@@ -321,7 +358,7 @@ $html = @"
     .caveat{color:#fbbf24;font-size:12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:4px;padding:10px 14px;margin-bottom:32px}
     h2{font-size:11px;font-weight:600;color:#524f4c;letter-spacing:0.1em;text-transform:uppercase;margin:40px 0 12px}
 
-    .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:8px}
+    .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:8px}
     .card{background:#161616;border:1px solid #262626;border-radius:4px;padding:16px 20px}
     .card-value{font-size:28px;font-weight:700;line-height:1.1;margin-bottom:4px}
     .card-label{font-size:10px;color:#524f4c;text-transform:uppercase;letter-spacing:0.06em}
@@ -340,9 +377,10 @@ $html = @"
     td.empty{color:#524f4c;font-style:italic;padding:20px 16px;text-align:center}
 
     .badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:2px 7px;border-radius:2px}
-    .badge-red  {background:rgba(224,48,48,.12);color:#f07070;border:1px solid rgba(224,48,48,.25)}
-    .badge-green{background:rgba(74,222,128,.10);color:#4ade80;border:1px solid rgba(74,222,128,.25)}
-    .badge-gray {background:rgba(82,79,76,.20);color:#524f4c;border:1px solid rgba(82,79,76,.30)}
+    .badge-red   {background:rgba(224,48,48,.12);color:#f07070;border:1px solid rgba(224,48,48,.25)}
+    .badge-yellow{background:rgba(251,191,36,.10);color:#fbbf24;border:1px solid rgba(251,191,36,.25)}
+    .badge-green {background:rgba(74,222,128,.10);color:#4ade80;border:1px solid rgba(74,222,128,.25)}
+    .badge-gray  {background:rgba(82,79,76,.20);color:#524f4c;border:1px solid rgba(82,79,76,.30)}
 
     .note{color:#524f4c;font-size:12px;margin-bottom:12px}
 
@@ -367,7 +405,7 @@ $html = @"
 
   <h1>MC1470871 Exposure Check</h1>
   <p class="subtitle">Apps holding User.ReadBasic.All, and whether they already also hold a permission that keeps app-role-assignment or license reads working after the rollout completes (late September 2026).</p>
-  <p class="caveat">This is an inventory of permission grants, not proof of actual API usage. Microsoft Graph does not log which specific endpoint a call touched under a broad grant, so a "Needs review" app is not guaranteed to break, and a "Likely covered" app is not guaranteed to be unaffected. Confirm by testing the actual call before you rely on this report alone.</p>
+  <p class="caveat">This is an inventory of permission grants, not proof of actual API usage. Microsoft Graph does not log which specific endpoint a call touched under a broad grant, so a "Needs review" app is not guaranteed to break, and a "Likely covered" app is not guaranteed to be unaffected. User.Read.All covers app role assignments and LicenseAssignment.Read.All covers license details specifically, so an app with only one of the two is "Partially covered" and may still break on the other call. Confirm by testing the actual call before you rely on this report alone.</p>
 
   <h2>Summary</h2>
   <div class="summary">
@@ -378,6 +416,10 @@ $html = @"
     <div class="card">
       <div class="card-value $reviewColor">$needsReviewCount</div>
       <div class="card-label">Needs review</div>
+    </div>
+    <div class="card">
+      <div class="card-value $partialColor">$partialCount</div>
+      <div class="card-label">Partially covered</div>
     </div>
     <div class="card">
       <div class="card-value green">$coveredCount</div>
