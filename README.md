@@ -13,6 +13,14 @@ PowerShell scripts for Microsoft 365 security and administration. Published by [
 
 More context: [tenantwizards.nl/blog/conditional-access-changes-may-13](https://tenantwizards.nl/blog/conditional-access-changes-may-13)
 
+### GraphPermissions
+
+| Script | Description |
+|--------|-------------|
+| [Get-ReadBasicAllExposureReport.ps1](GraphPermissions/Get-ReadBasicAllExposureReport.ps1) | Inventories apps granted User.ReadBasic.All ahead of the Graph permission change (MC1470871, rollout completing late September 2026). Flags whether each app already also holds User.Read.All or LicenseAssignment.Read.All. Inventory only, not proof of actual endpoint usage. Outputs an HTML report. |
+
+More context: [tenantwizards.nl/blog/user-readbasic-all-graph-permission-change-2026](https://tenantwizards.nl/blog/user-readbasic-all-graph-permission-change-2026)
+
 ## Requirements
 
 - PowerShell 5.1 or PowerShell 7+
@@ -29,6 +37,7 @@ Run scripts directly against your tenant:
 ```powershell
 .\ConditionalAccess\Get-CAEnforcementReport.ps1
 .\ConditionalAccess\Get-CAEnforcementMonitor.ps1
+.\GraphPermissions\Get-ReadBasicAllExposureReport.ps1
 ```
 
 Parameters:
@@ -57,3 +66,4 @@ Each script lists its required Graph permissions in the `.NOTES` section of the 
 - `Policy.Read.All`
 - `AuditLog.Read.All`
 - `Application.Read.All`
+- `Directory.Read.All`
