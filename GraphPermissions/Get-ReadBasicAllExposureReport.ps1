@@ -25,6 +25,11 @@
     (app role assignments vs. license details, respectively), so holding
     only one of the two is tracked separately from holding both.
 
+    For delegated grants, only a tenant-wide (consentType "AllPrincipals")
+    grant counts as real coverage. A grant one specific user personally
+    consented to only protects that user, not the app's other users, so it
+    is reported separately as "User only" rather than counted as coverage.
+
     Produces an HTML report with:
       - Every app (delegated or application grant) holding User.ReadBasic.All
       - Whether that same grant also already includes User.Read.All and/or
@@ -92,9 +97,10 @@ function ConvertTo-HtmlSafe {
     $Text -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;'
 }
 
-function Get-YesNoBadge {
-    param([bool]$Value)
-    if ($Value) { '<span class="badge badge-green">Yes</span>' }
+function Get-CoverageBadge {
+    param([bool]$TenantWide, [bool]$UserOnly)
+    if ($TenantWide) { '<span class="badge badge-green">Yes</span>' }
+    elseif ($UserOnly) { '<span class="badge badge-yellow">User only</span>' }
     else { '<span class="badge badge-gray">No</span>' }
 }
 
@@ -202,7 +208,11 @@ try {
 
 Write-Host 'Fetching delegated permission grants...' -ForegroundColor Gray
 
-# clientObjectId -> [permission names granted]
+# clientObjectId -> @{ TenantWide = HashSet; UserSpecific = HashSet }
+# A delegated grant's consentType matters: "AllPrincipals" applies to every user of the
+# app, but a grant with a specific principalId only applies to the one user who consented
+# (commonly an admin testing the app). Only a tenant-wide grant actually protects the
+# app's other users, so the two are tracked separately rather than merged.
 $delegatedGrantsByClient = @{}
 
 try {
@@ -216,9 +226,13 @@ try {
             if (-not $grantedScopes) { continue }
             $clientId = $grant.clientId
             if (-not $delegatedGrantsByClient.ContainsKey($clientId)) {
-                $delegatedGrantsByClient[$clientId] = [System.Collections.Generic.HashSet[string]]::new()
+                $delegatedGrantsByClient[$clientId] = @{
+                    TenantWide   = [System.Collections.Generic.HashSet[string]]::new()
+                    UserSpecific = [System.Collections.Generic.HashSet[string]]::new()
+                }
             }
-            foreach ($s in $grantedScopes) { [void]$delegatedGrantsByClient[$clientId].Add($s) }
+            $bucket = if ($grant.consentType -eq 'AllPrincipals') { 'TenantWide' } else { 'UserSpecific' }
+            foreach ($s in $grantedScopes) { [void]$delegatedGrantsByClient[$clientId][$bucket].Add($s) }
         }
         $uri = $resp.'@odata.nextLink'
     } while ($uri)
@@ -258,20 +272,30 @@ foreach ($clientId in $appGrantsByClient.Keys) {
         AppName      = $appGrantsByClient[$clientId].DisplayName
         ClientId     = $clientId
         GrantType    = 'Application'
-        HasUserReadAll = $perms.Contains('User.Read.All')
-        HasLicenseReadAll = $perms.Contains('LicenseAssignment.Read.All')
+        HasUserReadAll         = $perms.Contains('User.Read.All')
+        HasLicenseReadAll      = $perms.Contains('LicenseAssignment.Read.All')
+        # Application permissions have no per-user consent variance (they're granted
+        # tenant-wide or not at all), so there's no "user only" state to track here.
+        UserOnlyUserReadAll    = $false
+        UserOnlyLicenseReadAll = $false
     }
 }
 
 foreach ($clientId in $delegatedGrantsByClient.Keys) {
-    $perms = $delegatedGrantsByClient[$clientId]
-    if (-not $perms.Contains('User.ReadBasic.All')) { continue }
+    $tenantWide   = $delegatedGrantsByClient[$clientId].TenantWide
+    $userSpecific = $delegatedGrantsByClient[$clientId].UserSpecific
+    $hasReadBasicAnywhere = $tenantWide.Contains('User.ReadBasic.All') -or $userSpecific.Contains('User.ReadBasic.All')
+    if (-not $hasReadBasicAnywhere) { continue }
     $rows += [pscustomobject]@{
         AppName      = Get-AppName $clientId
         ClientId     = $clientId
         GrantType    = 'Delegated'
-        HasUserReadAll = $perms.Contains('User.Read.All')
-        HasLicenseReadAll = $perms.Contains('LicenseAssignment.Read.All')
+        # Coverage counts ONLY tenant-wide (AllPrincipals) grants — a permission one user
+        # personally consented to does not protect the app's other users.
+        HasUserReadAll         = $tenantWide.Contains('User.Read.All')
+        HasLicenseReadAll      = $tenantWide.Contains('LicenseAssignment.Read.All')
+        UserOnlyUserReadAll    = (-not $tenantWide.Contains('User.Read.All')) -and $userSpecific.Contains('User.Read.All')
+        UserOnlyLicenseReadAll = (-not $tenantWide.Contains('LicenseAssignment.Read.All')) -and $userSpecific.Contains('LicenseAssignment.Read.All')
     }
 }
 
@@ -321,8 +345,8 @@ if ($rows.Count -eq 0) {
             <span class=`"app-id`">$($row.ClientId)</span>
           </td>
           <td>$($row.GrantType)</td>
-          <td>$(Get-YesNoBadge $row.HasUserReadAll)</td>
-          <td>$(Get-YesNoBadge $row.HasLicenseReadAll)</td>
+          <td>$(Get-CoverageBadge $row.HasUserReadAll $row.UserOnlyUserReadAll)</td>
+          <td>$(Get-CoverageBadge $row.HasLicenseReadAll $row.UserOnlyLicenseReadAll)</td>
           <td>$riskBadge</td>
         </tr>"
     }
@@ -405,7 +429,7 @@ $html = @"
 
   <h1>MC1470871 Exposure Check</h1>
   <p class="subtitle">Apps holding User.ReadBasic.All, and whether they already also hold a permission that keeps app-role-assignment or license reads working after the rollout completes (late September 2026).</p>
-  <p class="caveat">This is an inventory of permission grants, not proof of actual API usage. Microsoft Graph does not log which specific endpoint a call touched under a broad grant, so a "Needs review" app is not guaranteed to break, and a "Likely covered" app is not guaranteed to be unaffected. User.Read.All covers app role assignments and LicenseAssignment.Read.All covers license details specifically, so an app with only one of the two is "Partially covered" and may still break on the other call. Confirm by testing the actual call before you rely on this report alone.</p>
+  <p class="caveat">This is an inventory of permission grants, not proof of actual API usage. Microsoft Graph does not log which specific endpoint a call touched under a broad grant, so a "Needs review" app is not guaranteed to break, and a "Likely covered" app is not guaranteed to be unaffected. User.Read.All covers app role assignments and LicenseAssignment.Read.All covers license details specifically, so an app with only one of the two is "Partially covered" and may still break on the other call. A "User only" badge means one specific user personally consented to that permission, not the whole tenant, so it does not protect the app's other users and is not counted toward the risk score. Confirm by testing the actual call before you rely on this report alone.</p>
 
   <h2>Summary</h2>
   <div class="summary">
