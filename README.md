@@ -20,7 +20,7 @@ More context: [tenantwizards.nl/blog/conditional-access-changes-may-13](https://
 |--------|-------------|
 | [Get-ReadBasicAllExposureReport.ps1](GraphPermissions/Get-ReadBasicAllExposureReport.ps1) | Inventories apps granted User.ReadBasic.All ahead of the Graph permission change (MC1470871, rollout completing late September 2026). Flags whether each app already also holds User.Read.All or LicenseAssignment.Read.All. Inventory only, not proof of actual endpoint usage. Outputs an HTML report. |
 
-More context: [tenantwizards.nl/blog/user-readbasic-all-graph-permission-change-2026](https://tenantwizards.nl/blog/user-readbasic-all-graph-permission-change-2026)
+More context: [tenantwizards.nl/announcements/user-readbasic-all-graph-permission-change-2026](https://tenantwizards.nl/announcements/user-readbasic-all-graph-permission-change-2026)
 
 ## Requirements
 

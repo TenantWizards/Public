@@ -73,7 +73,7 @@
     Author: Tenant Wizards (tenantwizards.nl)
 
 .LINK
-    https://tenantwizards.nl/blog/user-readbasic-all-graph-permission-change-2026
+    https://tenantwizards.nl/announcements/user-readbasic-all-graph-permission-change-2026
 #>
 
 [CmdletBinding()]
@@ -471,7 +471,7 @@ $html = @"
   <div class="container" style="padding:0">
     <a href="https://learn.microsoft.com/en-us/graph/api/user-list-approleassignments?view=graph-rest-1.0" target="_blank">Microsoft Learn - appRoleAssignments endpoint</a>
     &nbsp;&middot;&nbsp;
-    <a href="https://tenantwizards.nl/blog/user-readbasic-all-graph-permission-change-2026" target="_blank">tenantwizards.nl</a>
+    <a href="https://tenantwizards.nl/announcements/user-readbasic-all-graph-permission-change-2026" target="_blank">tenantwizards.nl</a>
   </div>
 </footer>
 
