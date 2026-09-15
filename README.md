@@ -10,8 +10,9 @@ PowerShell scripts for Microsoft 365 security and administration. Published by [
 |--------|-------------|
 | [Get-CAEnforcementReport.ps1](ConditionalAccess/Get-CAEnforcementReport.ps1) | Pre-enforcement audit: checks whether your tenant is affected by the CA enforcement change (MC1223829, May 13 2026). Lists relevant policies and detects legacy authentication sign-ins that will break after enforcement. Outputs an HTML report. |
 | [Get-CAEnforcementMonitor.ps1](ConditionalAccess/Get-CAEnforcementMonitor.ps1) | Post-enforcement monitor: queries sign-in logs after May 13 and shows CA failures and new MFA-required sign-ins scoped to affected policies only. Cross-checks against the week before May 13 to filter out pre-existing enforcement. Outputs an HTML report. |
+| [Get-AuthFlowsBlockReport.ps1](ConditionalAccess/Get-AuthFlowsBlockReport.ps1) | Checks whether an enabled Conditional Access policy blocks device code flow and authentication transfer, the flow abused in the September 2026 passkey-themed vishing campaign (Storm-3121/Storm-3032). Reports Blocked / Report-only / Not blocked per flow. Doesn't tell you whether device code flow is legitimately in use in your tenant. Outputs an HTML report. |
 
-More context: [tenantwizards.nl/blog/conditional-access-changes-may-13](https://tenantwizards.nl/blog/conditional-access-changes-may-13)
+More context: [tenantwizards.nl/blog/conditional-access-changes-may-13](https://tenantwizards.nl/blog/conditional-access-changes-may-13), [tenantwizards.nl/blog/passkey-vishing-microsoft-365-2026](https://tenantwizards.nl/blog/passkey-vishing-microsoft-365-2026)
 
 ### GraphPermissions
 
@@ -37,6 +38,7 @@ Run scripts directly against your tenant:
 ```powershell
 .\ConditionalAccess\Get-CAEnforcementReport.ps1
 .\ConditionalAccess\Get-CAEnforcementMonitor.ps1
+.\ConditionalAccess\Get-AuthFlowsBlockReport.ps1
 .\GraphPermissions\Get-ReadBasicAllExposureReport.ps1
 ```
 
