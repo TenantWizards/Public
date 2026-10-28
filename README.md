@@ -22,6 +22,14 @@ More context: [tenantwizards.nl/blog/conditional-access-changes-may-13](https://
 
 More context: [tenantwizards.nl/announcements/user-readbasic-all-graph-permission-change-2026](https://tenantwizards.nl/announcements/user-readbasic-all-graph-permission-change-2026)
 
+### SSPR
+
+| Script | Description |
+|--------|-------------|
+| [Get-SSPRMethodCoverageReport.ps1](SSPR/Get-SSPRMethodCoverageReport.ps1) | Ahead of the SSPR registered-methods change (MC1325414): lists every SSPR-enabled user who isn't actually SSPR-capable today per Microsoft's own `isSsprCapable` flag, with a plain-language likely cause (FIDO2/Windows Hello only, a single method category, nothing registered). Separately flags users who are capable today only via SMS or voice call, ahead of the 2027 Microsoft-provided SMS/voice retirement. Doesn't detect the directory-sourced-fallback part of the Nov 7 change specifically — see the script's own caveat. Outputs an HTML report. |
+
+More context: [tenantwizards.com/blog/sspr-registered-methods-november-2026](https://tenantwizards.com/blog/sspr-registered-methods-november-2026)
+
 ## Requirements
 
 - PowerShell 5.1 or PowerShell 7+
@@ -40,6 +48,7 @@ Run scripts directly against your tenant:
 .\ConditionalAccess\Get-CAEnforcementMonitor.ps1
 .\ConditionalAccess\Get-AuthFlowsBlockReport.ps1
 .\GraphPermissions\Get-ReadBasicAllExposureReport.ps1
+.\SSPR\Get-SSPRMethodCoverageReport.ps1
 ```
 
 Parameters:
