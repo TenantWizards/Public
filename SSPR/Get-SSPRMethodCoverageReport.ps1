@@ -18,6 +18,16 @@
     A user who looks "registered" in a headcount report can still be
     unable to complete an actual password reset because of any of these.
 
+    Microsoft already exposes the underlying per-user data in the portal:
+    Entra admin center > Identity > Authentication methods > Activity >
+    Registration (requires Entra ID P1/P2 and a role such as Reports
+    Reader). For a one-off look at a small tenant, that view is simpler
+    than running this script. What this script adds is the plain-language
+    "Likely cause" per non-capable user and the SMS/voice durability
+    watch described below, neither of which the portal computes - useful
+    for larger tenants, repeat checks, or a shareable report, not a
+    replacement for the portal view.
+
     This script does NOT re-implement Microsoft's method-counting rules
     itself. It calls the same Microsoft Graph report Entra ID uses
     internally (GET /reports/authenticationMethods/userRegistrationDetails)
