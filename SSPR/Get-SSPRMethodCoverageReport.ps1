@@ -8,7 +8,7 @@
 
 .DESCRIPTION
     MC1325414: starting November 7, 2026 (per the notice body; see the
-    linked blog post for why that date is itself unsettled across
+    linked announcement for why that date is itself unsettled across
     Microsoft's own sources), SSPR stops accepting directory-sourced
     contact info that was never explicitly registered. Separately, and
     not new with this change, Microsoft Authenticator, software OATH
@@ -35,14 +35,14 @@
     which is the authoritative answer to "can this user actually use SSPR
     today." What this script adds on top is a plain-language "Likely
     cause" for every user who is NOT capable, worked out from their
-    methodsRegistered list using the category rules from the blog post
+    methodsRegistered list using the category rules from the announcement
     below, plus a separate "durability watch" flag for users who are
     capable today only via a method Microsoft is retiring in 2027.
 
     The "Likely cause" column is explanatory, not authoritative. The
     mapping from raw methodsRegistered values (for example
     "microsoftAuthenticatorPush", "softwareOneTimePasscode", "mobilePhone")
-    to the categories described in the blog post is this script's own
+    to the categories described in the announcement is this script's own
     best-effort reading of Microsoft's documented values, not something
     Microsoft's API returns directly. An unrecognized or future method
     value is shown as "Other: <raw value>" rather than guessed at.
@@ -109,7 +109,7 @@
     Author: Tenant Wizards (tenantwizards.com)
 
 .LINK
-    https://tenantwizards.com/blog/sspr-registered-methods-november-2026
+    https://tenantwizards.com/announcements/sspr-registered-methods-november-2026
 #>
 
 [CmdletBinding()]
@@ -132,7 +132,7 @@ function ConvertTo-HtmlSafe {
 }
 
 # Best-effort mapping from raw methodsRegistered values to the SSPR
-# categories described in the blog post. Not an authoritative Microsoft
+# categories described in the announcement. Not an authoritative Microsoft
 # source for this mapping — see the .DESCRIPTION caveat above.
 $CategoryMap = @{
     'microsoftAuthenticatorPush'         = 'AuthenticatorOrOATH'
@@ -160,7 +160,7 @@ $CategoryMap = @{
 # Categories that actually count toward Microsoft's "number of methods
 # required" SSPR check. Alternate mobile phone, security questions'
 # per-account-type quirks, and anything in $CategoryMap not listed here
-# (FIDO2, WindowsHello, Passkey) are deliberately excluded: the blog post
+# (FIDO2, WindowsHello, Passkey) are deliberately excluded: the announcement
 # this script accompanies only verified SSPR eligibility for the
 # categories below.
 $SsprEligibleCategories = @('AuthenticatorOrOATH', 'MobilePhone', 'OfficePhone', 'Email', 'SecurityQuestion')
@@ -297,7 +297,7 @@ foreach ($d in $details) {
     } elseif ($categories.Contains('MobilePhone') -or $categories.Contains('OfficePhone')) {
         # Capable today, but SMS/voice is among the registered categories keeping them
         # that way. Not a problem today - a forward-looking flag for the Feb/Jul 2027
-        # Microsoft-provided SMS/voice retirement covered in the blog post.
+        # Microsoft-provided SMS/voice retirement covered in the announcement.
         $durabilityRows += [pscustomobject]@{
             UserPrincipalName = $d.userPrincipalName
             DisplayName       = $d.userDisplayName
@@ -467,7 +467,7 @@ $html = @"
 
   <h1>MC1325414 Coverage Check</h1>
   <p class="subtitle">SSPR-enabled users who aren't actually SSPR-capable today, why, and who's capable only through a method Microsoft is retiring in 2027.</p>
-  <p class="caveat">isSsprCapable is Microsoft's own live policy evaluation, read directly from the Graph authentication methods report, not re-derived by this script. The "Likely cause" and category badges are this script's own best-effort explanation, based on a manual mapping from the raw methodsRegistered values to the categories described in the linked blog post. An unrecognized method value is shown as an "Other" badge rather than guessed at. This script cannot tell whether a registered phone number or email came from directory sync versus genuine user registration, so it cannot detect the November 7 directory-sourced-fallback change specifically. Re-run after that change reaches your tenant for a current picture. Admin accounts are flagged, not specially evaluated: Microsoft Entra administrator roles are subject to the separate, stricter SSPR two-gate policy, which this script does not model.</p>
+  <p class="caveat">isSsprCapable is Microsoft's own live policy evaluation, read directly from the Graph authentication methods report, not re-derived by this script. The "Likely cause" and category badges are this script's own best-effort explanation, based on a manual mapping from the raw methodsRegistered values to the categories described in the linked announcement. An unrecognized method value is shown as an "Other" badge rather than guessed at. This script cannot tell whether a registered phone number or email came from directory sync versus genuine user registration, so it cannot detect the November 7 directory-sourced-fallback change specifically. Re-run after that change reaches your tenant for a current picture. Admin accounts are flagged, not specially evaluated: Microsoft Entra administrator roles are subject to the separate, stricter SSPR two-gate policy, which this script does not model.</p>
 
   <h2>Summary</h2>
   <div class="summary">
@@ -503,7 +503,7 @@ $html = @"
   </div>
 
   <h2>Durability watch: capable today via SMS or voice</h2>
-  <p class="note">Not a problem today. Microsoft-provided SMS/voice delivery retires February 1, 2027 for most users, July 1, 2027 for Global Administrators and external users (see the blog post). Plan a follow-up migration for these users ahead of that date.</p>
+  <p class="note">Not a problem today. Microsoft-provided SMS/voice delivery retires February 1, 2027 for most users, July 1, 2027 for Global Administrators and external users (see the announcement). Plan a follow-up migration for these users ahead of that date.</p>
   <div class="table-wrap">
     <table>
       <thead><tr>
@@ -520,7 +520,7 @@ $html = @"
   <div class="container" style="padding:0">
     <a href="https://learn.microsoft.com/en-us/graph/api/resources/userregistrationdetails" target="_blank">Microsoft Learn - userRegistrationDetails resource</a>
     &nbsp;&middot;&nbsp;
-    <a href="https://tenantwizards.com/blog/sspr-registered-methods-november-2026" target="_blank">tenantwizards.com</a>
+    <a href="https://tenantwizards.com/announcements/sspr-registered-methods-november-2026" target="_blank">tenantwizards.com</a>
   </div>
 </footer>
 
